@@ -40,6 +40,7 @@ x = nextZeit			(Kessel kaum möglich)
 // Konfiguration
 //
 var debugLogLevel = 3;
+var feierTagFirstId = 300000;
 
 var Kessel = {
     "firstId":77000,		// hier erste ID für neu erstellte Datenpunkte einstellen. Es werden pro Kreis ... IDs reserviert (Bedeutung s.o.)
@@ -109,7 +110,6 @@ var Heizkreise = {
 //
 // Hilfsfunktionen
 //
-var feierTagFirstId = 300000;
 
 function logOutput(level, str) {
 //        "1": "debug  ",
@@ -118,35 +118,6 @@ function logOutput(level, str) {
 //        "4": "warn   ",
 //        "5": "error  "
     if (level >= debugLogLevel) log(str);
-}
-
-function setzeKesselAnf(kreis, bAnforderung) {
-    var sollTemp, sollKessel = 40; // Mindesttemp. Kessel
-
-    // wenn ein Heizkreis angegeben, die Anforderung für diesen je nach bAnforderung setzen
-    if (kreis) {
-        var sollTemp = 0;
-        if (bAnforderung && kreis["firstId"]) sollTemp = getState(kreis["firstId"]);
-        if (sollTemp) {
-            // wenn nicht angegeben, Kessel auf 10K mehr fahren
-            kreis["kesselAnf"] = sollTemp + (kreis["kesselPlus"] ? kreis["kesselPlus"] : 10);
-        } else {
-            kreis["kesselAnf"] = 0;
-        }
-        logOutput(2, "[setzeKesselAnf] setze Anforderung für Kreis #" + kreis["firstId"] + " auf " + sollTemp + "°C");
-    }
-
-    // selbst konfigurierte Kessel-Mindesttemperatur
-    if (Kessel["minTemp"]) sollKessel = Kessel["minTemp"];
-
-    // alle Heizkreise durchlaufen, Maximum suchen
-    for (var HK in Heizkreise) {
-        sollTemp = Heizkreise[HK]["kesselAnf"];
-        if (sollTemp > sollKessel) sollKessel = sollTemp;
-    }
-
-    logOutput(2, "[setzeKesselAnf] setze Kessel-Soll-Temperatur auf " + sollKessel + "°C");
-    setState(Kessel["firstId"], sollKessel);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -186,11 +157,13 @@ function observeStatus(data, idCnt, idTime, usage, idRest) {
 //
 // Überwachung/Regulierung der Soll-Temperaturen
 //
+// TODO: Bisher reine Speicherladung mittels Pumpe, noch KEIN Pumpenkreis, noch KEIN Mischerkreis
+//
 function observeTemp(data, kreis) {
     var minTemp, maxTemp, istTemp, hysterese = 10;
 
     if (kreis["hysterese"]) hysterese = kreis["hysterese"];
-    if (kreis["firstId"] && kreis["istTempId"]) {
+    if (kreis["istTempId"]) {
         istTemp = getState(kreis["istTempId"]);
         minTemp = getState(kreis["firstId"]) - hysterese/2;
         maxTemp = minTemp + hysterese;
@@ -199,22 +172,41 @@ function observeTemp(data, kreis) {
     }
 
     if (!istTemp) {
-        logOutput(4, "[observeTemp] #" + data.id + " (Kreis #" + kreis["firstId"] + ") kann Soll- oder Ist-Temperatur nicht lesen!");
+        logOutput(4, "[observeTemp] cannot read temperature for circuit #" + kreis["firstId"] + " on change of #" + data.id);
     } else if (kreis["relaisId"]) {
         var istRelais = getState(kreis["relaisId"]);
         if ((istRelais != true) && (istTemp < minTemp)) {
-            logOutput(2, "[observeTemp] schalte Relais #" + kreis["relaisId"] + " AN (Ist: " + istTemp + " < " + minTemp + ")");
+            logOutput(2, "[observeTemp] set relais #" + kreis["relaisId"] + " ON (temp " + istTemp + " < " + minTemp + ")");
             setState(kreis["relaisId"], true);
-            setzeKesselAnf(kreis, true);
-            // TODO: Mischersteuerung bei Mischerkreisen
         } else if ((istRelais != false) && (istTemp > maxTemp)) {
-            logOutput(2, "[observeTemp] schalte Relais #" + kreis["relaisId"] + " AUS (Ist: " + istTemp + " > " + maxTemp + ")");
+            logOutput(2, "[observeTemp] set relais #" + kreis["relaisId"] + " OFF (temp " + istTemp + " > " + maxTemp + ")");
             setState(kreis["relaisId"], false);
-            setzeKesselAnf(kreis, false);
-            // TODO: Mischersteuerung bei Mischerkreisen
         } else {
-            logOutput(1, "[observeTemp] lasse Relais #" + kreis["relaisId"] + " unverändert " + (istRelais ? "AN" : "AUS") + " (" + minTemp + " < Ist: " + istTemp + " < " + maxTemp + ")");
+            logOutput(1, "[observeTemp] leave relais #" + kreis["relaisId"] + (istRelais ? " ON" : " OFF") + " (temp " + istTemp + " is " + minTemp + ".." + maxTemp + ")");
         }
+    }
+}
+
+function observeRelay(data, kreis) {
+    var sollTemp = getState(kreis["firstId"]);
+
+    // beim Einschalten des Relais, prüfen ob Kessel-Soll erhöht werden muss
+    if (data.newState.value && (sollTemp > 0)) {
+        kreis["kesselAnf"] = sollTemp + (kreis["kesselPlus"] ? kreis["kesselPlus"] : 10);
+        if (kreis["kesselAnf"] > getState(Kessel["firstId"]))
+            setState(Kessel["firstId"], kreis["kesselAnf"]);
+        logOutput(2, "[observeRelay] set demand for ciruit #" + kreis["firstId"] + " to " + sollTemp + "°C");
+    } else {
+        kreis["kesselAnf"] = 0;
+
+        // frage Maximum aller anderen Heizkreise ab, starte mit Kessel-Mindesttemperatur
+        sollTemp = (Kessel["minTemp"] ? Kessel["minTemp"] : 40);
+        for (var HK in Heizkreise) {
+            sollTemp = Heizkreise[HK]["kesselAnf"];
+            if (sollTemp < Heizkreise[HK]["kesselAnf"]) sollTemp = Heizkreise[HK]["kesselAnf"];
+        }
+        setState(Kessel["firstId"], sollTemp);
+        logOutput(2, "[observeRelay] unset demand for ciruit #" + kreis["firstId"] + ", reset to " + sollTemp + "°C");
     }
 }
 
@@ -223,13 +215,13 @@ function observeTemp(data, kreis) {
 //
 // Zeitplanung der Soll-Temperaturen
 //
-function gibSollTemp(kreis, zeit, wochentag) {
+function getNominalTemp(kreis, zeit, wochentag) {
     var soll = -1;
     var zsoll = "0000";
     var programm, progGestern;
 
     if (kreis["tagesprogramm"]) {
-        logOutput(2, "[gibSollTemp] lese Wochentagsprogramm #" + wochentag);
+        logOutput(2, "[getNominalTemp] read program for day " + wochentag);
         if (kreis["tagesprogramm"][wochentag])
             programm = kreis[kreis["tagesprogramm"][wochentag]];
     }
@@ -237,24 +229,24 @@ function gibSollTemp(kreis, zeit, wochentag) {
         // wenn keine Sektion "tagesprogramm" gefunden, dann für alle Tage "programm" nutzen
         programm = kreis["programm"];
         if (programm)
-            logOutput(2, "[gibSollTemp] kein Wochentagsprogramm gefunden, nutze globales");
+            logOutput(2, "[getNominalTemp] read global program");
         else
-            logOutput(4, "[gibSollTemp] kein Programm gefunden!");
+            logOutput(4, "[getNominalTemp] no program found!");
     }
 
     if (programm) for (var zprog in programm) {
         if ((zsoll <= zprog) && (zeit >= zprog)) {
             soll = programm[zprog];
             zsoll = zprog;
-            logOutput(1, "[gibSollTemp] use '" + zprog + "' temp " + soll + "°C");
+            logOutput(1, "[getNominalTemp] use '" + zprog + "' temp " + soll + "°C");
         } else
-            logOutput(1, "[gibSollTemp] skip '" + zprog + "'");
+            logOutput(1, "[getNominalTemp] skip '" + zprog + "'");
     }
 
     return soll;
 }
 
-function setzeSollTemp() {
+function setNominalTemp() {
     var sollTemp, now = new Date();
     var timeNow = ("0" + now.getHours()).slice(-2) + ("0" + now.getMinutes()).slice(-2);
     var heute = now.getDay();
@@ -270,28 +262,26 @@ function setzeSollTemp() {
         if (now.getFullYear() < 2000) {
             sollTemp = Heizkreise[HK]["notlauf"];
         } else {
-            sollTemp = gibSollTemp(Heizkreise[HK], timeNow, heute);
+            sollTemp = getNominalTemp(Heizkreise[HK], timeNow, heute);
 
             // wenn keine gefunden: zuletzt gesetzte Soll-Temperatur auslesen
             if (sollTemp < 0) {
                 sollTemp = getState(Heizkreise[HK]["firstId"]);
                 // ist diese unbrauchbar, letzte Soll-Temperatur des Vortages ermitteln
                 // HINWEIS: hier erfolgt keine Prüfung, ob gestern ein Feiertag war - sollte aber recht selten eintreten
-                if (!sollTemp) sollTemp = gibSollTemp(Heizkreise[HK], "2400", (now.getDay() + 6) % 7);
+                if (!sollTemp) sollTemp = getNominalTemp(Heizkreise[HK], "2400", (now.getDay() + 6) % 7);
             }
         }
         if (sollTemp >= 0) {
-            logOutput(2, "[setzeSollTemp] setze Soll-Temperatur [" + timeNow + "] auf " + sollTemp + "°C");
+            logOutput(2, "[setNominalTemp] set temp [" + timeNow + "] to " + sollTemp + "°C");
             setState(Heizkreise[HK]["firstId"], sollTemp);
         }
     }
-    // und jetzt einmalig die KesselAnforderung setzen???
-    //setzeKesselAnf();
 
     // TODO: bei minütlicher Ausführung nicht mehr erforderlich!
     if (now.getFullYear() < 2000) {
         // Zeit nach Reboot noch nicht gestellt, alle 30 Sekunden prüfen
-        setTimeout(setzeSollTemp, 30000);
+        setTimeout(setNominalTemp, 30000);
     }
 }
 
@@ -300,14 +290,14 @@ function setzeSollTemp() {
 //
 // Initialisierung(en)
 //
-function initDatenpunkte(name, kreis) {
+function initDatapoints(name, kreis) {
     setObject(kreis["firstId"], {
         Name: "Heizung." + name + ".Soll",
         TypeName: "VARDP",
         ValueUnit: "°C",
         _persistent: true
     });
-    logOutput(3, "[initDatenpunkte] Datenpunkt # " + kreis["firstId"] + " 'Heizung." + name + ".Soll' erstellt.");
+    logOutput(3, "[initDatapoints] created datapoint #" + kreis["firstId"] + " 'Heizung." + name + ".Soll'");
 
     // Betriebsstundenzähler
     if (kreis["statusId"]) {
@@ -317,7 +307,7 @@ function initDatenpunkte(name, kreis) {
             TypeName: "VARDP",
             _persistent: true
         });
-        logOutput(3, "[initDatenpunkte] Datenpunkt # " + kreis["statusCnt"] + " 'Heizung." + name + ".Cnt' erstellt.");
+        logOutput(3, "[initDatapoints] created datapoint #" + kreis["statusCnt"] + " 'Heizung." + name + ".Cnt'");
 
         kreis["statusTime"] = kreis["firstId"] + 2;
         setObject(kreis["statusTime"], {
@@ -325,7 +315,7 @@ function initDatenpunkte(name, kreis) {
             TypeName: "VARDP",
             _persistent: true
         });
-        logOutput(3, "[initDatenpunkte] Datenpunkt # " + kreis["statusTime"] + " 'Heizung." + name + ".Zeit' erstellt.");
+        logOutput(3, "[initDatapoints] created datapoint #" + kreis["statusTime"] + " 'Heizung." + name + ".Zeit'");
 
         if (kreis["verbrauchStd"]) {
             kreis["storage"] = kreis["firstId"] + 3;
@@ -334,7 +324,7 @@ function initDatenpunkte(name, kreis) {
                 TypeName: "VARDP",
                 _persistent: true
             });
-            logOutput(3, "[initDatenpunkte] Datenpunkt # " + kreis["storage"] + " 'Heizung." + name + ".Vorrat' erstellt.");
+            logOutput(3, "[initDatapoints] created datapoint #" + kreis["storage"] + " 'Heizung." + name + ".Vorrat'");
         } else {
             kreis["storage"] = null;
         }
@@ -361,29 +351,41 @@ function initDatenpunkte(name, kreis) {
         });
     }
 
-    if (kreis["relaisId"]) {
+//    if (kreis["relaisId"]) {
         // Anfangszustand auf null (undefiniert) setzen
         // nur dadurch wird nach einem Neustart des Systems auch der Relaiszustand wieder gesetzt!
-        setState(kreis["relaisId"], null);
-    }
+//        setState(kreis["relaisId"], null);
+//    }
 }
 
 function initHeizung() {
+    if (!Kessel["firstId"]) {
+        logOutput(5, "[initHeizung] Configuration error - exiting.");
+        return;
+    }
     // Datenpunkte erstellen und auf Notlauftemperatur stellen
-    initDatenpunkte("Kessel", Kessel);
+    initDatapoints("Kessel", Kessel);
 
     // Datenpunkte der Heizkreise setzen
     var cnt = 1;
     for (var HK in Heizkreise) {
         Heizkreise[HK]["firstId"] = Kessel["firstId"] + (10 * cnt++);
-        initDatenpunkte(HK, Heizkreise[HK]);
+        initDatapoints(HK, Heizkreise[HK]);
 
+        // Relaiszustand überwachen
+        if (Heizkreise[HK]["relaisId"]) {
+            subscribe({
+                id: Heizkreise[HK]["relaisId"]
+            }, function(data) {
+                observeRelais(data, Heizkreise[HK]);
+            });
+        }
         // TODO: nextSoll / nextZeit nur bei Heizkreisen
     }
 
     // einmalig Temperaturen setzen, fortan alle 5 Minuten
-    setzeSollTemp();
-    schedule("0/5 * * * *", setzeSollTemp);
+    setNominalTemp();
+    schedule("0/5 * * * *", setNominalTemp);
 }
 
 
