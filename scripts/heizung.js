@@ -202,7 +202,6 @@ function observeRelay(data, kreis) {
         // frage Maximum aller anderen Heizkreise ab, starte mit Kessel-Mindesttemperatur
         sollTemp = (Kessel["minTemp"] ? Kessel["minTemp"] : 40);
         for (var HK in Heizkreise) {
-            sollTemp = Heizkreise[HK]["kesselAnf"];
             if (sollTemp < Heizkreise[HK]["kesselAnf"]) sollTemp = Heizkreise[HK]["kesselAnf"];
         }
         setState(Kessel["firstId"], sollTemp);
@@ -351,6 +350,14 @@ function initDatapoints(name, kreis) {
         });
     }
 
+    // Relaiszustand überwachen
+    if (kreis["relaisId"] && (kreis != Kessel)) {
+        subscribe({
+            id: kreis["relaisId"]
+        }, function(data) {
+            observeRelay(data, kreis);
+        });
+    }
 //    if (kreis["relaisId"]) {
         // Anfangszustand auf null (undefiniert) setzen
         // nur dadurch wird nach einem Neustart des Systems auch der Relaiszustand wieder gesetzt!
@@ -372,14 +379,6 @@ function initHeizung() {
         Heizkreise[HK]["firstId"] = Kessel["firstId"] + (10 * cnt++);
         initDatapoints(HK, Heizkreise[HK]);
 
-        // Relaiszustand überwachen
-        if (Heizkreise[HK]["relaisId"]) {
-            subscribe({
-                id: Heizkreise[HK]["relaisId"]
-            }, function(data) {
-                observeRelay(data, Heizkreise[HK]);
-            });
-        }
         // TODO: nextSoll / nextZeit nur bei Heizkreisen
     }
 
