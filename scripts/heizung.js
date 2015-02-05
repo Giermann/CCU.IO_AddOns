@@ -26,12 +26,12 @@
 
 /*
 
-0 = firstId:	".Soll"		Soll-Temperatur
-1 = countId:	".Count"	Zähler der Einschaltvorgänge (wenn externId angegeben, wird diese überwacht)
-2 = timeId:	".Zeit"		Betriebsstundenzähler in Stunden
-3 = storageId:	".Vorrat"	Heizöl/Rohstoff-Vorrat, wenn "usage" angegeben
-x = nextSoll			(Kessel kaum möglich)
-x = nextZeit			(Kessel kaum möglich)
+0 = firstId:   ".Soll"    Soll-Temperatur
+1 = countId:   ".Count"   Zähler der Einschaltvorgänge (wenn externId angegeben, wird diese überwacht)
+2 = timeId:    ".Zeit"    Betriebsstundenzähler in Stunden
+3 = storageId: ".Vorrat"  Heizöl/Rohstoff-Vorrat, wenn "usage" angegeben
+x = nextSoll              (Kessel kaum möglich)
+x = nextZeit              (Kessel kaum möglich)
 
 */
 
@@ -43,64 +43,112 @@ var debugLogLevel = 3;
 var feierTagFirstId = 300000;
 
 var Kessel = {
-    "firstId":77000,		// hier erste ID für neu erstellte Datenpunkte einstellen. Es werden pro Kreis ... IDs reserviert (Bedeutung s.o.)
-    "istTempId":74306,		// vorhandener Datenpunkt mit Ist-Temperatur
-    "relaisId":77100,		// vorhandener Datenpunkt für Relais der Brenneranforderung
-    "statusId":77101,		// vorhandener Datenpunkt für Zählung der Brennerbetriebszeit/Anschaltzyklen (notfalls =relaisId)
-    "usage":0.0205,		// Heizöl/Rohstoff-Verbrauch pro Betriebsstunde (hier in Hektoliter, dadurch bessere Anzeige)
-    "hysterese":10,
-    "minTemp":40,
-    "maxTemp":75
+    firstId:   77000,  // hier erste ID für neu erstellte Datenpunkte einstellen. Es werden pro Kreis ... IDs reserviert (Bedeutung s.o.)
+    istTempId: 74306,  // vorhandener Datenpunkt mit Ist-Temperatur
+    relaisId:  77100,  // vorhandener Datenpunkt für Relais der Brenneranforderung
+    statusId:  77101,  // vorhandener Datenpunkt für Zählung der Brennerbetriebszeit/Anschaltzyklen (notfalls =relaisId)
+    usage:     0.0205, // Heizöl/Rohstoff-Verbrauch pro Betriebsstunde (hier in Hektoliter, dadurch bessere Anzeige)
+    hysterese: 10,
+    minTemp:   40,
+    maxTemp:   75
 }
 var Heizkreise = {
     "Brauchwasser":{
-        "kesselPlus":15,	// wieviel Kelvin muss Kessel mehr als Soll haben
-        "notlauf":55,		// Fallback, wenn (noch) keine Uhrzeit verfügbar ist
-        "istTempId":74308,	// vorhandener Datenpunkt mit Ist-Temperatur
-        "relaisId":77102,	// vorhandener Datenpunkt für Relais der Ladepumpe
-        "hysterese":5,
-        "mo-fr":{		// benannte Zeitprogramme
-            "0500":55,
+        kesselPlus: 15,    // wieviel Kelvin muss Kessel mehr als Soll haben
+        notlauf:    52,    // Fallback, wenn (noch) keine Uhrzeit verfügbar ist
+        istTempId:  74308, // vorhandener Datenpunkt mit Ist-Temperatur
+        relaisId:   77102, // vorhandener Datenpunkt für Relais der Ladepumpe
+        hysterese:  10,
+        "_1":{             // benannte Zeitprogramme
+            "0500":52,
             "0900":0,
-            "1200":55,
+            "1200":52,
             "2130":0
         },
-        "wochenende":{
-            "0500":55,
+        "_2":{
+            "0500":52,
             "2130":0
         },
-        "tagesprogramm":{	// Wochentagsprogramme
-            1:"mo-fr",
-            2:"mo-fr",
-            3:"mo-fr",
-            4:"mo-fr",
-            5:"mo-fr",
-            6:"wochenende",
-            0:"wochenende"
+        dayprogram:{       // Wochentagsprogramme
+            1:"_1",
+            2:"_1",
+            3:"_1",
+            4:"_1",
+            5:"_1",
+            6:"_2",
+            0:"_2"
         }
     },
     "Fussboden":{
-        "kesselPlus":-20,
-        "notlauf":40,
-        "istTempId":74303,
-        "relaisId":77103,
-        "hysterese":3,
-        "programm":{
-            "0530":40,
-            "0900":20,
-            "1200":40,
-            "2000":20
+        kesselPlus: -20,
+        notlauf:    21.5,
+        istTempId:  74303,
+        relaisId:   77103,
+        hysterese:  3,
+//        program:{
+//            "0530":40,
+//            "0900":20,
+//            "1200":40,
+//            "2000":20
+//        }
+        "_1":{             // benannte Zeitprogramme
+            "0530":22.5,
+            "0900":19.5,
+            "1200":22.5,
+            "2000":19.5
+        },
+        "_2":{
+            "0530":22.5,
+            "0900":19.5,
+            "1200":22.5,
+            "2100":19.5
+        },
+        "_3":{
+            "0530":22.5,
+            "2100":19.5
+        },
+        "_4":{
+            "0530":22.5,
+            "2000":19.5
+        },
+        dayprogram:{       // Wochentagsprogramme
+            1:"_1",
+            2:"_1",
+            3:"_1",
+            4:"_1",
+            5:"_2",
+            6:"_3",
+            0:"_4"
         }
     },
     "Heizkreis":{
-        "kesselPlus":-15,
-        "notlauf":50,
-        "istTempId":74305,
-        "relaisId":77104,
-        "hysterese":3,
-        "programm":{
-            "0600":50,
-            "2200":30
+        kesselPlus: -15,
+        notlauf:    23.5,
+        istTempId:  74305,
+        relaisId:   77104,
+        hysterese:  3,
+//        program:{
+//            "0530":50,
+//            "2200":30
+//        }
+        "_1":{             // benannte Zeitprogramme
+            "0530":23.5,
+            "0900":17.5,
+            "1200":23.5,
+            "2200":17.5
+        },
+        "_2":{
+            "0700":23.5,
+            "2200":17.5
+        },
+        dayprogram:{       // Wochentagsprogramme
+            1:"_1",
+            2:"_1",
+            3:"_1",
+            4:"_1",
+            5:"_1",
+            6:"_2",
+            0:"_2"
         }
     }
 }
@@ -223,25 +271,25 @@ function observeRelay(data) {
 function getNominalTemp(kreis, zeit, wochentag) {
     var soll = -1;
     var zsoll = "0000";
-    var programm, progGestern;
+    var prog;
 
-    if (kreis.tagesprogramm) {
+    if (kreis.dayprogram) {
         logOutput(2, "[getNominalTemp] read program for day " + wochentag);
-        if (kreis.tagesprogramm[wochentag])
-            programm = kreis[kreis.tagesprogramm[wochentag]];
+        if (kreis.dayprogram[wochentag])
+            prog = kreis[kreis.dayprogram[wochentag]];
     }
-    if (!programm) {
-        // wenn keine Sektion "tagesprogramm" gefunden, dann für alle Tage "programm" nutzen
-        programm = kreis.programm;
-        if (programm)
+    if (!prog) {
+        // wenn keine Sektion "dayprogram" gefunden, dann für alle Tage "program" nutzen
+        prog = kreis.program;
+        if (program)
             logOutput(2, "[getNominalTemp] read global program");
         else
             logOutput(4, "[getNominalTemp] no program found!");
     }
 
-    if (programm) for (var zprog in programm) {
+    if (prog) for (var zprog in prog) {
         if ((zsoll <= zprog) && (zeit >= zprog)) {
-            soll = programm[zprog];
+            soll = prog[zprog];
             zsoll = zprog;
             logOutput(1, "[getNominalTemp] use '" + zprog + "' temp " + soll + "°C");
         } else
