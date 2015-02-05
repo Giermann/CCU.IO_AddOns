@@ -377,7 +377,7 @@ function initHeizung() {
             subscribe({
                 id: Heizkreise[HK]["relaisId"]
             }, function(data) {
-                observeRelais(data, Heizkreise[HK]);
+                observeRelay(data, Heizkreise[HK]);
             });
         }
         // TODO: nextSoll / nextZeit nur bei Heizkreisen
