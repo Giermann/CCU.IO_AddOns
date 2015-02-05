@@ -109,7 +109,7 @@ function logOutput(level, str) {
 // Ueberwachung/Auslesen eines externen Zustandes (An-Ueberwachung mittels externem Programm)
 //
 function observeExternIn(objectId) {
-    var cmd = externCmdDP[objectId]["cmdRead"];
+    var cmd = externCmdDP[objectId].cmdRead;
     logOutput(1, "[observeExternIn] #" + objectId + " --> " + cmd);
 
     // ggf. async starten (spawn), dann muessten die Parameter in eigenem Array stehen
@@ -119,21 +119,21 @@ function observeExternIn(objectId) {
         } else if (stdout) {
             var newVal;
             logOutput(2, "[observeExternIn] got result: " + stdout);
-            if (externCmdDP[objectId]["type"] == "bool") {
+            if (externCmdDP[objectId].type == "bool") {
                 newVal = (parseInt(stdout) > 0 ? true : false);
-            } else if (externCmdDP[objectId]["type"] == "int") {
+            } else if (externCmdDP[objectId].type == "int") {
                 newVal = parseInt(stdout);
-            } else if (externCmdDP[objectId]["type"] == "float") {
+            } else if (externCmdDP[objectId].type == "float") {
                 newVal = parseFloat(stdout);
-            } else if (externCmdDP[objectId]["type"] == "multi") {
-                for (var n in externCmdDP[objectId]["clients"]) if (stdout.length > n) {
+            } else if (externCmdDP[objectId].type == "multi") {
+                for (var n in externCmdDP[objectId].clients) if (stdout.length > n) {
                     newVal = (stdout.charAt(parseInt(n)+1) > 0 ? true : false);
-                    if ((getState(externCmdDP[objectId]["clients"][n]) != newVal) ||
-                        ((new Date() - Date.parse(getTimestamp(externCmdDP[objectId]["clients"][n]))) > 3600000)) {
-                        logOutput(2, "[observeExternIn] #" + externCmdDP[objectId]["clients"][n] + " = " + newVal);
-                        setState(externCmdDP[objectId]["clients"][n], newVal);
+                    if ((getState(externCmdDP[objectId].clients[n]) != newVal) ||
+                        ((new Date() - Date.parse(getTimestamp(externCmdDP[objectId].clients[n]))) > 3600000)) {
+                        logOutput(2, "[observeExternIn] #" + externCmdDP[objectId].clients[n] + " = " + newVal);
+                        setState(externCmdDP[objectId].clients[n], newVal);
                     } else {
-                        logOutput(1, "[observeExternIn] #" + externCmdDP[objectId]["clients"][n] + " is already " + newVal);
+                        logOutput(1, "[observeExternIn] #" + externCmdDP[objectId].clients[n] + " is already " + newVal);
                     }
                 }
                 newVal = (stdout.charAt(0) > 0 ? true : false);
@@ -149,7 +149,7 @@ function observeExternIn(objectId) {
         }
     });
 
-    setTimeout(function(){ observeExternIn(objectId); } , externCmdDP[objectId]["interval"]);
+    setTimeout(function(){ observeExternIn(objectId); } , externCmdDP[objectId].interval);
 }
 
 
@@ -159,11 +159,11 @@ function observeExternOut(data) {
     // nur bei Aenderungen Kommando ausfuehren
     if (data.newState.value != data.oldState.value) {
         // TODO: weitere Typen unterstuetzen
-        if (externCmdDP[data.id]["type"] == "bool") {
+        if (externCmdDP[data.id].type == "bool") {
             if (data.newState.value > 0)
-                cmd = externCmdDP[data.id]["cmdTrue"];
+                cmd = externCmdDP[data.id].cmdTrue;
             else
-                cmd = externCmdDP[data.id]["cmdFalse"];;
+                cmd = externCmdDP[data.id].cmdFalse;;
         }
         logOutput(2, "[observeExternOut] " + data.name + " #" + data.id + " = " + data.newState.value + " --> " + cmd);
 
@@ -190,43 +190,42 @@ function initExternCmd() {
     // Datenpunkte erstellen und Ueberwachung starten
     for (var externCmd in externCmdDP) {
         // TODO: auf numerische ID pruefen, um Falschkonfiguration zu verhindern
-        if (!externCmdDP[externCmd]["name"])
-            externCmdDP[externCmd]["name"] = "externCmd." + externCmd;
+        if (!externCmdDP[externCmd].name)
+            externCmdDP[externCmd].name = "externCmd." + externCmd;
 
         // Datenpunkt erstellen
         setObject(externCmd, {
-            Name: externCmdDP[externCmd]["name"],
+            Name: externCmdDP[externCmd].name,
             TypeName: "VARDP",
             _persistent: true
         });
 
-        if (externCmdDP[externCmd]["interval"]) {
-            externCmdDP[externCmd]["interval"] = parseInt(externCmdDP[externCmd]["interval"]);
+        if (externCmdDP[externCmd].interval) {
+            externCmdDP[externCmd].interval = parseInt(externCmdDP[externCmd].interval);
             // In - interval 100...86400000 ms (100 ms ... 1 day)
-            if (externCmdDP[externCmd]["interval"] < 100) {
-                logOutput(4, "[initExternCmd] adjusting interval from " + externCmdDP[externCmd]["interval"] + " to 100.");
-                externCmdDP[externCmd]["interval"] = 100;
+            if (externCmdDP[externCmd].interval < 100) {
+                logOutput(4, "[initExternCmd] adjusting interval from " + externCmdDP[externCmd].interval + " to 100.");
+                externCmdDP[externCmd].interval = 100;
             }
-            if (externCmdDP[externCmd]["interval"] > 86400000) {
-                logOutput(4, "[initExternCmd] adjusting interval from " + externCmdDP[externCmd]["interval"] + " to 86400000.");
-                externCmdDP[externCmd]["interval"] = 86400000;
+            if (externCmdDP[externCmd].interval > 86400000) {
+                logOutput(4, "[initExternCmd] adjusting interval from " + externCmdDP[externCmd].interval + " to 86400000.");
+                externCmdDP[externCmd].interval = 86400000;
             }
 
-            if (externCmdDP[externCmd]["cmdRead"])
+            if (externCmdDP[externCmd].cmdRead)
                 observeExternIn(externCmd); // plant sich selbst neu
-        } else if (externCmdDP[externCmd]["type"]) {
+        } else if (externCmdDP[externCmd].type) {
             // Out
             subscribe({
                 id: externCmd
-            }, function(data) {
-                observeExternOut(data);
-            });
+            },
+                observeExternOut
+            );
         }
 
-        logOutput(3, "[initExternCmd] created datapoint #" + externCmd + " '" + externCmdDP[externCmd]["name"] + "'.");
+        logOutput(3, "[initExternCmd] created datapoint #" + externCmd + " '" + externCmdDP[externCmd].name + "'.");
     }
 }
 
 
 initExternCmd();
-
