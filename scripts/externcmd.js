@@ -55,21 +55,21 @@ var externCmdDP = {
     77103:{
         "name":     "Heizung.Fussboden.Relais",
         "type":     "bool",                     // out
-        "cmdTrue":  "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -02",
-        "cmdFalse": "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -12"
+        "cmdTrue":  "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB2 -02",
+        "cmdFalse": "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB2 -12"
     },
-//        "mixOff":   "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -13 -14",
-//        "mixUp":    "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -04 -03",
-//        "mixDown":  "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -14 -03"
+//        "mixOff":   "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -03",
+//        "mixUp":    "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -04 -13",
+//        "mixDown":  "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -14 -13"
     77104:{
         "name":     "Heizung.Heizkreis.Relais",
         "type":     "bool",                     // out
-        "cmdTrue":  "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -06",
-        "cmdFalse": "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -16"
+        "cmdTrue":  "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB2 -06",
+        "cmdFalse": "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB2 -16"
     },
-//        "mixOff":   "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -17 -18",
-//        "mixUp":    "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -08 -07",
-//        "mixDown":  "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -18 -07"
+//        "mixOff":   "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -07",
+//        "mixUp":    "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -08 -17",
+//        "mixDown":  "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -18 -17"
     77101:{
         "name":     "Heizung.Brenner.Status",
         "type":     "multi",                    // in bool, erstes Zeichen: 0/1
