@@ -16,8 +16,6 @@
 // - "dynamisches" Kessel-Soll nach Ist-Temperatur setzen? (evtl. nicht Hysterese, sondern min/max getrennt setzen?)
 // - Kessel-Notruf einführen, Verbraucher bei drohender Überhitzung einschalten!
 //
-// - Anlaufphase (soll = null) funktioniert noch nicht vernünftig! (setzt kein KesselSoll) ?
-//
 // - Ist-Temperatur-Datenpunkte und "Feiertag Heute/Morgen" nach Namen statt ID angeben?!
 // - bei Heizkreisen/Mischerkreisen mehr als nur Hysterese setzen?!
 // - nextSoll & nextZeit setzen
@@ -426,6 +424,9 @@ function initHeizung() {
         }
         // TODO: nextSoll / nextZeit nur bei Heizkreisen
     }
+
+    // einmalig Kessel-Anforderung lesen (Relais Aus simlulieren)
+    observeRelay({ newState: {value: false} });
 
     // einmalig Temperaturen setzen, fortan alle 5 Minuten
     setNominalTemp();
