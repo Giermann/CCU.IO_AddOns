@@ -2,30 +2,33 @@
 // 1'2015 Sven Giermann
 //
 // Input-Datenpunkte:
-//    77100:{
+//    77101:{
 //        "name":     "...",                    // Name des zu erstellenden Datenpunktes
 //        "type":     ["bool"|"int"|"float"],
 //        "interval":  1000,                    // Ausfuehrungsinterval in ms
-//        "cmdRead":  "sudo ..."                // Kommando zum Lesen des Wertes (Rueckgabe ueber stdout)
+//        "command":  "..."                // Kommando zum Lesen des Wertes (Rueckgabe ueber stdout)
 //    }
 //
 // Multi-Input-Datenpunkte:
-//    77100:{
+//    77101:{
 //        "name":     "...",                    // Name des zu erstellenden Datenpunktes
 //        "type":     "multi",
 //        "clients":  [77101, 77102],           // Anzahl Clients bestimmt die Anzahl erwarteter Zeichen
 //        "interval":  1000,                    // Ausfuehrungsinterval in ms
-//        "cmdRead":  "sudo ..."                // Kommando zum Lesen des Wertes (Rueckgabe ueber stdout)
+//        "command":  "..."                // Kommando zum Lesen des Wertes (Rueckgabe ueber stdout)
 //    },
-//    77101:{                                   // Typ ist hier immer "bool", also 0 oder 1 aus stdout
+//    77102:{                                   // Typ ist hier immer "bool", also 0 oder 1 aus stdout
 //        "name":     "..."                     // Name des zu erstellenden Datenpunktes
 //    },
-//    77102:{
+//    77103:{
 //        "name":     "..."                     // Name des zu erstellenden Datenpunktes
 //    }
 
-// ps -edfa f |grep ' \\_ /opt/ccu.io/tools/dlpio8.arm'|cut -b 9-15 | xargs kill
-// ln -sf dlpio8.new /opt/ccu.io/tools/dlpio8.arm
+// zu oft gestartete/blockierende Prozesse finden:
+//   ps -edfa f |grep ' \\_ /opt/ccu.io/tools/dlpio8.arm'|cut -b 9-15 | xargs kill
+
+// Benutzer "pi" Zugriff auf serielle + USB-Schnittstellen geben:
+//   usermod -a -G dialout pi
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -33,59 +36,75 @@
 //
 var debugLogLevel = 3;
 
+var externCmdId = 77100; // Channel Id
+
 var externCmdDP = {
-    77100:{
-        "name":     "Heizung.Brenner.Relais",
-        "type":     "bool",                     // out
-        "cmdTrue":  "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -01",
-        "cmdFalse": "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -11"
+    77101:{
+        name:     "Heizung.Brenner.Relais",
+        type:     "bool",                     // out
+        commands: {
+          "_1":   "/opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -01",
+          "_0":   "/opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -11"
+        }
     },
-//    77101:{
-//        "name":     "Heizung.Brenner.Status",
-//        "type":     "bool",                     // in
-//        "interval":  1000,
-//        "cmdRead":  "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB0 -i1"
-//    },
     77102:{
-        "name":     "Heizung.Brauchwasser.Relais",
-        "type":     "bool",                     // out
-        "cmdTrue":  "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -05",
-        "cmdFalse": "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -15"
+        name:     "Heizung.Brauchwasser.Relais",
+        type:     "bool",                     // out
+        commands: {
+          "_1":   "/opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -05",
+          "_0":   "/opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -15"
+        }
     },
     77103:{
-        "name":     "Heizung.Fussboden.Relais",
-        "type":     "bool",                     // out
-        "cmdTrue":  "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB2 -02",
-        "cmdFalse": "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB2 -12"
+        name:     "Heizung.Fussboden.Relais",
+        type:     "bool",                     // out
+        commands: {
+          "_1":   "/opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB2 -02",
+          "_0":   "/opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB2 -12"
+        }
     },
-//        "mixOff":   "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -03",
-//        "mixUp":    "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -04 -13",
-//        "mixDown":  "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -14 -13"
     77104:{
-        "name":     "Heizung.Heizkreis.Relais",
-        "type":     "bool",                     // out
-        "cmdTrue":  "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB2 -06",
-        "cmdFalse": "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB2 -16"
-    },
-//        "mixOff":   "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -07",
-//        "mixUp":    "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -08 -17",
-//        "mixDown":  "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB1 -18 -17"
-    77101:{
-        "name":     "Heizung.Brenner.Status",
-        "type":     "multi",                    // in bool, erstes Zeichen: 0/1
-        "clients":  [77105, 77106, 77107],             // folgende Zeichen in diese IDs
-        "interval":  1000,
-        "cmdRead":  "sudo /opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB0 -b14"
+        name:     "Heizung.Heizkreis.Relais",
+        type:     "bool",                     // out
+        commands: {
+          "_1":   "/opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB2 -06",
+          "_0":   "/opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB2 -16"
+        }
     },
     77105:{
-        "name":     "Heizung.Heizkreis.Status"
+        name:     "Heizung.Fussboden.Mischer",
+        type:     "val",                      // out
+        commands: {
+          "_1":   "/opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB2 -04 -13",
+          "_0":   "/opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB2 -03"
+          "_-1":  "/opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB2 -14 -13"
+        }
     },
     77106:{
-        "name":     "Heizung.Heizkreis.MischAuf"
+        name:     "Heizung.Heizkreis.Mischer",
+        type:     "val",                      // out
+        commands: {
+          "_1":   "/opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB2 -08 -17",
+          "_0":   "/opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB2 -07"
+          "_-1":  "/opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB2 -18 -17"
+        }
     },
+//    77107:{
+//        name:     "Heizung.Brenner.Status",
+//        type:     "bool",                     // in
+//        interval:  1000,
+//        command:  "/opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB0 -i1"
+//    },
     77107:{
-        "name":     "Heizung.Heizkreis.MischZu"
-    }
+        name:     "Heizung.Brenner.Status",
+        type:     "multi",                    // in bool, erstes Zeichen: 0/1
+        clients:  [77108, 77109, 77110],      // folgende Zeichen in diese IDs
+        interval:  1000,
+        command:  "/opt/ccu.io/tools/dlpio8.arm -d /dev/ttyUSB0 -b14"
+    },
+    77108:{ name: "Heizung.Fussboden.Status" },
+    77109:{ name: "Heizung.Heizkreis.Status" },
+    77110:{ name: "Heizung.Heizkreis.MischZu" }
 }
 
 
@@ -109,7 +128,7 @@ function logOutput(level, str) {
 // Ueberwachung/Auslesen eines externen Zustandes (An-Ueberwachung mittels externem Programm)
 //
 function observeExternIn(objectId) {
-    var cmd = externCmdDP[objectId].cmdRead;
+    var cmd = externCmdDP[objectId].command;
     logOutput(1, "[observeExternIn] #" + objectId + " --> " + cmd);
 
     // ggf. async starten (spawn), dann muessten die Parameter in eigenem Array stehen
@@ -158,17 +177,17 @@ function observeExternOut(data) {
 
     // nur bei Aenderungen Kommando ausfuehren
     if (data.newState.value != data.oldState.value) {
-        // TODO: weitere Typen unterstuetzen
         if (externCmdDP[data.id].type == "bool") {
             if (data.newState.value > 0)
-                cmd = externCmdDP[data.id].cmdTrue;
+                cmd = externCmdDP[data.id].commands["_1"];
             else
-                cmd = externCmdDP[data.id].cmdFalse;;
-        }
+                cmd = externCmdDP[data.id].commands["_0"];
+        } else
+            cmd = externCmdDP[data.id].commands["_" + data.newState.value];
         logOutput(2, "[observeExternOut] " + data.name + " #" + data.id + " = " + data.newState.value + " --> " + cmd);
 
         // ggf. async starten (spawn), dann muessten die Parameter in eigenem Array stehen
-        cp.exec(cmd, function(err, stdout, stderr) {
+        if (cmd) cp.exec(cmd, function(err, stdout, stderr) {
             if (err) {
                 logOutput(5, "[observeExternOut] error executing command: " + cmd);
                 logOutput(5, "[observeExternOut] " + stderr);
@@ -212,7 +231,7 @@ function initExternCmd() {
                 externCmdDP[externCmd].interval = 86400000;
             }
 
-            if (externCmdDP[externCmd].cmdRead)
+            if (externCmdDP[externCmd].command)
                 observeExternIn(externCmd); // plant sich selbst neu
         } else if (externCmdDP[externCmd].type) {
             // Out
