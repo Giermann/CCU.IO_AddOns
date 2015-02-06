@@ -10,14 +10,13 @@
 //
 //
 // TODO:
-// - manuelles Setzen des Relais (Brauchwasser) führt nicht zu BW-Ladung, weil SollTemp = 0!
-//   --> als einmaliges Override implementieren
-//   --> dazu Betrieb solange aufrecht erhalten, bis einmal Abschalttemp. erreicht!
+// - bei einmaligem Override: Betrieb solange aufrecht erhalten, bis einmal Abschalttemp. erreicht!
 // - im Gegenzug führt Ausschalten des Relais auch nicht zur Reduktion des Kessel-Soll! (subscribe relaisId!)
 //
 // - "dynamisches" Kessel-Soll nach Ist-Temperatur setzen? (evtl. nicht Hysterese, sondern min/max getrennt setzen?)
+// - Kessel-Notruf einführen, Verbraucher bei drohender Überhitzung einschalten!
 //
-// - Anlaufphase (soll = null) funktioniert noch nicht vernünftig! (setzt kein KesselSoll)
+// - Anlaufphase (soll = null) funktioniert noch nicht vernünftig! (setzt kein KesselSoll) ?
 //
 // - Ist-Temperatur-Datenpunkte und "Feiertag Heute/Morgen" nach Namen statt ID angeben?!
 // - bei Heizkreisen/Mischerkreisen mehr als nur Hysterese setzen?!
@@ -26,10 +25,11 @@
 
 /*
 
-0 = firstId:   ".Soll"    Soll-Temperatur
+0 = firstId:              Channel Id
 1 = countId:   ".Count"   Zähler der Einschaltvorgänge (wenn externId angegeben, wird diese überwacht)
 2 = timeId:    ".Zeit"    Betriebsstundenzähler in Stunden
 3 = storageId: ".Vorrat"  Heizöl/Rohstoff-Vorrat, wenn "usage" angegeben
+4 = nomTempId: ".Soll"    Soll-Temperatur
 x = nextSoll              (Kessel kaum möglich)
 x = nextZeit              (Kessel kaum möglich)
 
@@ -45,8 +45,8 @@ var feierTagFirstId = 300000;
 var Kessel = {
     firstId:   77000,  // hier erste ID für neu erstellte Datenpunkte einstellen. Es werden pro Kreis ... IDs reserviert (Bedeutung s.o.)
     istTempId: 74306,  // vorhandener Datenpunkt mit Ist-Temperatur
-    relaisId:  77100,  // vorhandener Datenpunkt für Relais der Brenneranforderung
-    statusId:  77101,  // vorhandener Datenpunkt für Zählung der Brennerbetriebszeit/Anschaltzyklen (notfalls =relaisId)
+    relaisId:  77101,  // vorhandener Datenpunkt für Relais der Brenneranforderung
+    statusId:  77107,  // vorhandener Datenpunkt für Zählung der Brennerbetriebszeit/Anschaltzyklen (notfalls =relaisId)
     usage:     0.0205, // Heizöl/Rohstoff-Verbrauch pro Betriebsstunde (hier in Hektoliter, dadurch bessere Anzeige)
     hysterese: 10,
     minTemp:   40,
@@ -84,13 +84,8 @@ var Heizkreise = {
         notlauf:    21.5,
         istTempId:  74303,
         relaisId:   77103,
+        mischerId:  77105,
         hysterese:  3,
-//        program:{
-//            "0530":40,
-//            "0900":20,
-//            "1200":40,
-//            "2000":20
-//        }
         "_1":{             // benannte Zeitprogramme
             "0530":22.5,
             "0900":19.5,
@@ -126,6 +121,7 @@ var Heizkreise = {
         notlauf:    23.5,
         istTempId:  74305,
         relaisId:   77104,
+        mischerId:  77106,
         hysterese:  3,
 //        program:{
 //            "0530":50,
@@ -219,14 +215,14 @@ function observeTemp(data) {
 
     if (this.istTempId) {
         istTemp = getState(this.istTempId);
-        minTemp = getState(this.firstId) - (this.hysterese ? this.hysterese/2 : 5);
+        minTemp = getState(this.nomTempId) - (this.hysterese ? this.hysterese/2 : 5);
         maxTemp = minTemp + (this.hysterese ? this.hysterese : 10);
         if (this.minTemp && (this.minTemp > minTemp)) minTemp = this.minTemp;
         if (this.maxTemp && (this.maxTemp < maxTemp)) maxTemp = this.maxTemp;
     }
 
     if (!istTemp) {
-        logOutput(4, "[observeTemp] cannot read temperature for circuit #" + this.firstId + " on change of #" + data.id);
+        logOutput(4, "[observeTemp] cannot read temperature for circuit #" + this.nomTempId + " on change of #" + data.id);
     } else if (this.relaisId) {
         var istRelais = getState(this.relaisId);
         if ((istRelais != true) && (istTemp < minTemp)) {
@@ -242,14 +238,14 @@ function observeTemp(data) {
 }
 
 function observeRelay(data) {
-    var sollTemp = getState(this.firstId);
+    var sollTemp = getState(this.nomTempId);
 
     // beim Einschalten des Relais, prüfen ob Kessel-Soll erhöht werden muss
     if (data.newState.value && (sollTemp > 0)) {
         this.kesselAnf = sollTemp + (this.kesselPlus ? this.kesselPlus : 10);
-        if (this.kesselAnf > getState(Kessel.firstId))
-            setState(Kessel.firstId, this.kesselAnf);
-        logOutput(2, "[observeRelay] set demand for ciruit #" + this.firstId + " to " + sollTemp + "°C");
+        if (this.kesselAnf > getState(Kessel.nomTempId))
+            setState(Kessel.nomTempId, this.kesselAnf);
+        logOutput(2, "[observeRelay] set demand for ciruit #" + this.nomTempId + " to " + sollTemp + "°C");
     } else {
         this.kesselAnf = 0;
 
@@ -258,8 +254,8 @@ function observeRelay(data) {
         for (var HK in Heizkreise) {
             if (sollTemp < Heizkreise[HK].kesselAnf) sollTemp = Heizkreise[HK].kesselAnf;
         }
-        setState(Kessel.firstId, sollTemp);
-        logOutput(2, "[observeRelay] unset demand for ciruit #" + this.firstId + ", reset to " + sollTemp + "°C");
+        setState(Kessel.nomTempId, sollTemp);
+        logOutput(2, "[observeRelay] unset demand for ciruit #" + this.nomTempId + ", reset to " + sollTemp + "°C");
     }
 }
 
@@ -319,7 +315,7 @@ function setNominalTemp() {
 
             // wenn keine gefunden: zuletzt gesetzte Soll-Temperatur auslesen
             if (sollTemp < 0) {
-                sollTemp = getState(Heizkreise[HK].firstId);
+                sollTemp = getState(Heizkreise[HK].nomTempId);
                 // ist diese unbrauchbar, letzte Soll-Temperatur des Vortages ermitteln
                 // HINWEIS: hier erfolgt keine Prüfung, ob gestern ein Feiertag war - sollte aber recht selten eintreten
                 if (!sollTemp) sollTemp = getNominalTemp(Heizkreise[HK], "2400", (now.getDay() + 6) % 7);
@@ -327,7 +323,7 @@ function setNominalTemp() {
         }
         if (sollTemp >= 0) {
             logOutput(2, "[setNominalTemp] set temp [" + timeNow + "] to " + sollTemp + "°C");
-            setState(Heizkreise[HK].firstId, sollTemp);
+            setState(Heizkreise[HK].nomTempId, sollTemp);
         }
     }
 
@@ -344,13 +340,14 @@ function setNominalTemp() {
 // Initialisierung(en)
 //
 function initDatapoints(name, kreis) {
-    setObject(kreis.firstId, {
+    kreis.nomTempId = kreis.firstId + 4;
+    setObject(kreis.nomTempId, {
         Name: "Heizung." + name + ".Soll",
         TypeName: "VARDP",
         ValueUnit: "°C",
         _persistent: true
     });
-    logOutput(3, "[initDatapoints] created datapoint #" + kreis.firstId + " 'Heizung." + name + ".Soll'");
+    logOutput(3, "[initDatapoints] created datapoint #" + kreis.nomTempId + " 'Heizung." + name + ".Soll'");
 
     // Betriebsstundenzähler
     if (kreis.statusId) {
@@ -392,7 +389,7 @@ function initDatapoints(name, kreis) {
     if (kreis.istTempId) {
         // wenn Ist-Temperatur vorhanden, dann Soll- und Ist-Temperatur überwachen
         subscribe({
-            id: kreis.firstId
+            id: kreis.nomTempId
         },
             observeTemp.bind( kreis )
         );
