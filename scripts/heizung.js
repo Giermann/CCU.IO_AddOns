@@ -240,7 +240,7 @@ function observeRelay(data) {
 
     // beim Einschalten des Relais, prüfen ob Kessel-Soll erhöht werden muss
     if (data.newState.value && (sollTemp > 0)) {
-        this.kesselAnf = sollTemp + (this.kesselPlus ? this.kesselPlus : 10);
+        this.kesselAnf = sollTemp + (this.kesselPlus ? this.kesselPlus : 10) + (this.hysterese ? this.hysterese/2 : 5);
         if (this.kesselAnf > getState(Kessel.nomTempId))
             setState(Kessel.nomTempId, this.kesselAnf);
         logOutput(2, "[observeRelay] set demand for ciruit #" + this.nomTempId + " to " + sollTemp + "°C");
