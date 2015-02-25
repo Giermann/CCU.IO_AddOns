@@ -228,6 +228,6 @@ function main(folder) {
 
 main();
 
-// Taeglich um 2 Uhr ausführen
+// Taeglich um 2 Uhr ausfuehren
 schedule("0 2 * * *", main);
 
