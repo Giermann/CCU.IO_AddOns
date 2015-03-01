@@ -279,21 +279,31 @@ function observeTemp(data) {
         logOutput(4, "[observeTemp] cannot read temperature for circuit '" + this.name + "' on change of #" + data.id);
     } else if (this.relayId) {
         var rel = getState(this.relayId);
-        if ((rel != true) && (curTemp < minTemp)) {
-            logOutput(2, "[observeTemp] set relay '" + this.name + "' ON (temp " + curTemp + " < " + minTemp + ")");
-            setState(this.relayId, true);
-        } else if ((rel != false) && (curTemp > maxTemp)) {
-            logOutput(2, "[observeTemp] set relay '" + this.name + "' OFF" +
-                (this.delayOff ? " in "+this.delayOff+"s" : "") + " (temp " + curTemp + " > " + maxTemp + ")");
+        if (curTemp < minTemp) {
+            if (this.delayOffTimeout) {
+                // avoid delayed turning off
+                clearTimeout(this.delayOffTimeout);
+                this.delayOffTimeout = null;
+            }
+            if (rel != true) {
+                // turn on, if relay is off
+                logOutput(2, "[observeTemp] set relay '" + this.name + "' ON (temp " + curTemp + " < " + minTemp + ")");
+                setState(this.relayId, true);
+            }
+        } else if (!this.delayOffTimeout && (rel != false) && (curTemp >= maxTemp)) {
+            logOutput(2, "[observeTemp] set relay '" + this.name + "' OFF (temp " + curTemp + " > " + maxTemp + ")");
             if (this.delayOff && this.delayOff > 0) {
-                // unset nomBoiler 
+                // unset nomBoiler and calculate new nominal Boiler temp
+                this.nomBoiler = 0;
                 observeRelay({ newState: {value: false} });
-                this.delayOffTimeout = setTimeout( function(){ setState(this.relayId, false); }, this.delayOff * 1000 );
+                this.delayOffTimeout = setTimeout( function(){
+                    logOutput(2, "[delayOffTimeout] for relay '"+this.name+"'");
+                    this.delayOffTimeout = null;
+                    setState(this.relayId, false);
+                }.bind(this), this.delayOff * 1000 );
             } else {
                 setState(this.relayId, false);
             }
-        } else {
-            logOutput(1, "[observeTemp] leave relay '" + this.name + "' " + (rel ? "ON" : "OFF") + " (temp " + curTemp + " is " + minTemp + ".." + maxTemp + ")");
         }
     }
 }
