@@ -1,19 +1,14 @@
-/*
- * CCU.IO Feiertags-Script
- *
- * SG, 02.03.2015 - Umstellung auf Berechnung aller Feiertage (Jahre > 2019)
- *
- * initial version: 3'2014 hobbyquaker
- */
+// CCU.IO Feiertags-Script
+// 3'2014 hobbyquaker
+// 3'2015 Giermann - Umstellung auf Berechnung der Feiertage
 
 // Hier Bundesland einstellen.
 // Liste der Abkürzungen siehe http://hobbyquaker.blogspot.de/2014/03/deutsche-feiertage-im-json-format.html
-// alle Bundesländer:
 //   BB | BE | BW | BY | HB | HE | HH | MV | NI | NW | RP | SH | SL | SN | ST | TH
-// eigentlich nur relevant: (andere haben nur einheitliche Feiertage)
-//   BB | BW | BY | HE | MV | NW | RP | SL | SN | ST | TH
-var state = "NI";
-var ntpCommand = "sudo /usr/sbin/ntpdate-debian de.pool.ntp.org";
+var state = "BW";
+
+// bei Bedarf hier Kommando zum Einstellen der Uhrzeit angeben
+var ntpCommand = "sudo /usr/sbin/ntpdate-debian";
 
 // Hier ggf erste ID einstellen. Es werden 8 IDs benötigt.
 var firstId = 300000;
@@ -163,13 +158,6 @@ function allHolidays(state) {
 }
 
 function checkHolidays() {
-    if (ntpCommand && ntpCommand != "") {
-        var cp = require('child_process');
-        cp.exec(ntpCommand+" 2>&1", function(err, stdout) {
-            if(stdout) log(stdout);
-        });
-    }
-
     var d0 = new Date();
     var ts0 = dateStr(d0.getFullYear(), d0.getMonth() + 1, d0.getDate());
     var ts1 = dateStr(d0.getFullYear(), d0.getMonth() + 1, d0.getDate() + 1);
@@ -220,6 +208,13 @@ function checkHolidays() {
     setState(firstId+6, holidayNextDate);
     setState(firstId+7, holidayNextName);
 
+    // anschließend bei Bedarf die Uhrzeit synchronisieren
+    if (ntpCommand && ntpCommand != "") {
+        var cp = require('child_process');
+        cp.exec(ntpCommand+" 2>&1", function(err, stdout) {
+            if(stdout) log(stdout);
+        });
+    }
 }
 
 // Einmal bei Scriptstart ausführen
