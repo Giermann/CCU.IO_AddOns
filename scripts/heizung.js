@@ -296,7 +296,7 @@ function observeTemp(data) {
             }
             if (rel != true) {
                 // turn on, if relay is off
-                logOutput(2, "[observeTemp] set relay '" + this.name + "' ON (temp " + curTemp + " < " + minTemp + ")");
+                logOutput(2, "[observeTemp] set relay '" + this.name + "' ON (temp " + curTemp + " < " + minTemp + (override ? ") OVERRIDE" : ")"));
                 setState(this.relayId, true);
             }
         } else if (!this.delayOffTimeout && (rel != false) && (curTemp >= maxTemp)) {
@@ -315,6 +315,7 @@ function observeTemp(data) {
             }
         }
         if (override && (curTemp >= maxTemp)) {
+            logOutput(2, "[observeTemp] unset override for '" + this.name + "'");
             setState(this.overrideId, false);
         }
     }
@@ -452,8 +453,10 @@ function setNominalTemp() {
                 if ((now - Date.parse(getTimestamp(Circuits[circuit].overrideId))) > 3600000) {
                     // Not-Aus nach 1 Stunde
                     setState(Circuits[circuit].overrideId, false);
+                    logOutput(2, "[setNominalTemp] cancel override for '" + Circuits[circuit].name + "'");
                 } else {
                     nomTemp = Circuits[circuit].overrideTemp;
+                    //logOutput(1, "[setNominalTemp] override temp for '" + Circuits[circuit].name + "'");
                 }
             }
 
