@@ -554,7 +554,12 @@ function initDatapoints(circuit) {
             _persistent: true
         });
         logOutput(3, "[initDatapoints] created datapoint #" + circuit.overrideId + " 'Heizung." + circuit.name + ".Anforderung'");
-        // hier kein subscribe, da Zeitprogramm künftig jede Minute überprüft und somit zeitnah umgesetzt
+
+        subscribe({
+            id: circuit.overrideId, change:"ne"
+        },
+            setNominalTemp
+        );
     }
 
     // witterungsgeführte Heizkennlinie
