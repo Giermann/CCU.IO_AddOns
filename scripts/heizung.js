@@ -527,7 +527,7 @@ function initDatapoints(circuit) {
     // Ferienprogramm (Auswertung in setNominalTemp)
     if (circuit.holidayTemp) {
         circuit.holidayId = circuit.firstId + 8;
-        setObject(circuit.nomTempId, {
+        setObject(circuit.holidayId, {
             Name: "Heizung." + circuit.name + ".FerienBis",
             TypeName: "VARDP",
             _persistent: true
@@ -539,7 +539,7 @@ function initDatapoints(circuit) {
     // Override/einmalige Anforderung (Auswertung in setNominalTemp)
     if (circuit.overrideTemp) {
         circuit.overrideId = circuit.firstId + 9;
-        setObject(circuit.nomTempId, {
+        setObject(circuit.overrideId, {
             Name: "Heizung." + circuit.name + ".Anforderung",
             TypeName: "VARDP",
             _persistent: true
