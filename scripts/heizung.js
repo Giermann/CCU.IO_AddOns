@@ -25,14 +25,16 @@
 
 /*
 
-0 = firstId:               Channel Id
-1 = countId:   ".Count"    Zähler der Einschaltvorgänge (wenn externId angegeben, wird diese überwacht)
-2 = timeId:    ".Zeit"     Betriebsstundenzähler in Stunden
-3 = storageId: ".Vorrat"   Heizöl/Rohstoff-Vorrat, wenn "usage" angegeben
-4 = nomTempId: ".Soll"     Soll-Temperatur
-4 = nomRoomId: ".RaumSoll" Soll-Raum-Temperatur bei witterungsgeführter Heizkennlinie
-x = nextSoll               (Kessel kaum möglich)
-x = nextZeit               (Kessel kaum möglich)
+0 = firstId:                    Channel Id
+1 = countId:     ".Count"       Zähler der Einschaltvorgänge (wenn statusId angegeben, wird diese überwacht)
+2 = timeId:      ".Zeit"        Betriebsstundenzähler in Stunden
+3 = storageId:   ".Vorrat"      Heizöl/Rohstoff-Vorrat, wenn statusId und usage angegeben
+4 = nomTempId:   ".Soll"        Soll-Temperatur
+5 = nomRoomId:   ".RaumSoll"    Soll-Raum-Temperatur bei witterungsgeführter Heizkennlinie
+x = nextSoll                    (Kessel kaum möglich)
+x = nextZeit                    (Kessel kaum möglich)
+8 = holidayId:   ".FerienBis"   Timestamp, bis zu dem Ferienprogramm gilt, Angabe von holidayTemp nötig
+9 = overrideId:  ".Anforderung" einmalige Anfordung einer Speicherladung, wird bei Angabe von overrideTemp erstellt
 
 */
 
@@ -54,16 +56,18 @@ var Boiler = { name:      "Kessel",
     maxTemp:   75
 }
 var Circuits = {
-    "_1":{   name: "Brauchwasser",
-        addBoiler:  15,    // wieviel Kelvin muss Kessel mehr als Soll haben
-        notlauf:    50,    // Fallback, wenn (noch) keine Uhrzeit verfügbar ist
-        curTempId:  74308, // vorhandener Datenpunkt mit Ist-Temperatur
-        relayId:    77102, // vorhandener Datenpunkt für Relais der Ladepumpe
-        hysterese:  10,
-        delayOff:   60,    // wie viel Sekunden soll Ausschaltung des Relais verzögert werden (Schutz vor Kesselüberhitzung)
-        "_0":{             // benannte Zeitprogramme
+    "_1":{   name:   "Brauchwasser",
+        addBoiler:    15,    // wieviel Kelvin muss Kessel mehr als Soll haben
+        notlauf:      50,    // Fallback, wenn (noch) keine Uhrzeit verfügbar ist
+        overrideTemp: 50,    // einmalige Anforderung
+        holidayTemp:  0,     // Ferienprogramm
+        curTempId:    74308, // vorhandener Datenpunkt mit Ist-Temperatur
+        relayId:      77102, // vorhandener Datenpunkt für Relais der Ladepumpe
+        hysterese:    10,
+        delayOff:     60,    // wie viel Sekunden soll Ausschaltung des Relais verzögert werden (Schutz vor Kesselüberhitzung)
+        "_0":{               // benannte Zeitprogramme
             "0600":50,
-            "0800":60,     // Legionellenschutz der alten Steuerung vorbereiten
+            "0800":60,       // Legionellenschutz der alten Steuerung vorbereiten
             "0900":0,
             "1200":50,
             "2130":0
@@ -91,7 +95,7 @@ var Circuits = {
             "1500":50,
             "2130":0
         },
-        dayprogram:{       // Wochentagsprogramme
+        dayprogram:{         // Wochentagsprogramme
             1:"_0",
             2:"_1",
             3:"_1",
@@ -101,19 +105,19 @@ var Circuits = {
             0:"_2"
         }
     },
-    "_2":{   name: "Fussboden",
-        addBoiler: -20,
-        notlauf:    21.5,
-        curTempId:  74303,
-        relayId:    77103,
-        mischerId:  77105,
-        loggingId:  77108, // vorhandener Datenpunkt für Status/Temperaturlogging
-        retTempId:  74302,
-        hysterese:  3,
-        outTempId:  74310, // vorhandener Datenpunkt für witterungsgeführte Heizkennlinie
-        roomTempId: 74309,
-        adapt:      6,
-        "_1":{             // benannte Zeitprogramme
+    "_2":{   name:   "Fussboden",
+        addBoiler:   -20,
+        notlauf:      21.5,
+        curTempId:    74303,
+        relayId:      77103,
+        mischerId:    77105,
+        loggingId:    77108, // vorhandener Datenpunkt für Status/Temperaturlogging
+        retTempId:    74302,
+        hysterese:    3,
+        outTempId:    74310, // vorhandener Datenpunkt für witterungsgeführte Heizkennlinie
+        roomTempId:   74309,
+        adapt:        6,
+        "_1":{               // benannte Zeitprogramme
             "0530":22.5,
             "0900":20.0,
             "1200":22.5,
@@ -133,7 +137,7 @@ var Circuits = {
             "0530":22.5,
             "2000":20.0
         },
-        dayprogram:{       // Wochentagsprogramme
+        dayprogram:{         // Wochentagsprogramme
             1:"_1",
             2:"_1",
             3:"_1",
@@ -143,22 +147,22 @@ var Circuits = {
             0:"_4"
         }
     },
-    "_3":{   name: "Heizkreis",
-        addBoiler: -15,
-        notlauf:    23.5,
-        curTempId:  74305,
-        relayId:    77104,
-        mischerId:  77106,
-        loggingId:  77109, // vorhandener Datenpunkt für Status/Temperaturlogging
-        retTempId:  74304,
-        hysterese:  3,
-        outTempId:  74310, // vorhandener Datenpunkt für witterungsgeführte Heizkennlinie
-        adapt:      15,
+    "_3":{   name:   "Heizkreis",
+        addBoiler:   -15,
+        notlauf:      23.5,
+        curTempId:    74305,
+        relayId:      77104,
+        mischerId:    77106,
+        loggingId:    77109, // vorhandener Datenpunkt für Status/Temperaturlogging
+        retTempId:    74304,
+        hysterese:    3,
+        outTempId:    74310, // vorhandener Datenpunkt für witterungsgeführte Heizkennlinie
+        adapt:        15,
 //        program:{
 //            "0530":50,
 //            "2200":30
 //        }
-        "_1":{             // benannte Zeitprogramme
+        "_1":{               // benannte Zeitprogramme
             "0530":23.5,
             "0900":17.5,
             "1200":23.5,
@@ -168,7 +172,7 @@ var Circuits = {
             "0700":23.5,
             "2200":17.5
         },
-        dayprogram:{       // Wochentagsprogramme
+        dayprogram:{         // Wochentagsprogramme
             1:"_1",
             2:"_1",
             3:"_1",
@@ -429,6 +433,22 @@ function setNominalTemp() {
         } else {
             nomTemp = getNominalTemp(Circuits[circuit], timeNow, today);
 
+            // Ferienprogramm (noch) aktiv?
+            var holidayUntil = (Circuits[circuit].holidayId ? Date.parse(getState(Circuits[circuit].holidayId)) : now);
+            if ((holidayUntil - now) > 0) {
+                nomTemp = Circuits[circuit].holidayTemp;
+            }
+
+            // einmalige Anforderung?
+            if (Circuits[circuit].overrideId ? getState(Circuits[circuit].overrideId) : false) {
+                if ((now - Date.parse(getTimestamp(Circuits[circuit].overrideId))) > 3600000) {
+                    // Not-Aus nach 1 Stunde
+                    setState(Circuits[circuit].overrideId, false);
+                } else {
+                    nomTemp = Circuits[circuit].overrideTemp;
+                }
+            }
+
             // wenn keine gefunden: zuletzt gesetzte Soll-Temperatur auslesen
             if (nomTemp < 0) {
                 nomTemp = getState(Circuits[circuit].outTempId ? Circuits[circuit].nomRoomId : Circuits[circuit].nomTempId);
@@ -503,6 +523,30 @@ function initDatapoints(circuit) {
         _persistent: true
     });
     logOutput(3, "[initDatapoints] created datapoint #" + circuit.nomTempId + " 'Heizung." + circuit.name + ".Soll'");
+
+    // Ferienprogramm (Auswertung in setNominalTemp)
+    if (circuit.holidayTemp) {
+        circuit.holidayId = circuit.firstId + 8;
+        setObject(circuit.nomTempId, {
+            Name: "Heizung." + circuit.name + ".FerienBis",
+            TypeName: "VARDP",
+            _persistent: true
+        });
+        logOutput(3, "[initDatapoints] created datapoint #" + circuit.holidayId + " 'Heizung." + circuit.name + ".FerienBis'");
+        // hier kein subscribe, da Zeitprogramm künftig jede Minute überprüft und somit zeitnah umgesetzt
+    }
+
+    // Override/einmalige Anforderung (Auswertung in setNominalTemp)
+    if (circuit.overrideTemp) {
+        circuit.overrideId = circuit.firstId + 9;
+        setObject(circuit.nomTempId, {
+            Name: "Heizung." + circuit.name + ".Anforderung",
+            TypeName: "VARDP",
+            _persistent: true
+        });
+        logOutput(3, "[initDatapoints] created datapoint #" + circuit.overrideId + " 'Heizung." + circuit.name + ".Anforderung'");
+        // hier kein subscribe, da Zeitprogramm künftig jede Minute überprüft und somit zeitnah umgesetzt
+    }
 
     // witterungsgeführte Heizkennlinie
     if (circuit.outTempId) {
@@ -584,7 +628,7 @@ function initHeizung() {
         // TODO: nextSoll / nextZeit nur bei Heizkreisen
     }
 
-    // einmalig Kessel-Anforderung lesen (Relais Aus für imaginären Heizkreis simlulieren)
+    // einmalig Kessel-Anforderung lesen (Relais Aus für imaginären Heizkreis simulieren)
     observeRelay({ newState: {value: false} });
 
     // einmalig Temperaturen setzen, fortan alle 5 Minuten
