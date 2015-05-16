@@ -288,7 +288,7 @@ function observeTemp(data) {
     } else if (this.relayId) {
         var rel = getState(this.relayId);
         var override = boolTrue(this.overrideId ? getState(this.overrideId) : false);
-        if ((curTemp < minTemp) || (override && (curTemp < maxTemp)){
+        if ((curTemp < minTemp) || (override && (curTemp < maxTemp))) {
             if (this.delayOffTimeout) {
                 // avoid delayed turning off
                 clearTimeout(this.delayOffTimeout);
