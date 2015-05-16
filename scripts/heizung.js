@@ -199,6 +199,10 @@ function logOutput(level, str) {
     if (level >= debugLogLevel) log(str);
 }
 
+function boolTrue(boolVal) {
+    return (boolVal === true || boolVal === "true" || boolVal === 1);
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 //
 // Überwachung/Auslesen eines externen Zustandes (An-Überwachung mittels externem Programm)
@@ -211,12 +215,12 @@ function observeStatus(data) {
 
     // zählen von undefinierten Zuständen verhindern
     if ((data.oldState.value != null) && (data.oldState.value >= 0)) {
-        if ((data.newState.value == true) || (data.newState.value > 0)) {
+        if (boolTrue(data.newState.value)) {
             // Einschaltvorgang
             var cntOld = parseInt(getState(this.countId));
             setState(this.countId, cntOld + 1);
             logOutput(2, "[observeStatus] increase counter #" + this.countId + " --> " + cntOld + " + 1");
-        } else if ((data.newState.value == false) || (data.newState.value == 0)) {
+        } else if (!boolTrue(data.newState.value)) {
             // Ausschaltvorgang
             var timeOld = parseFloat(getState(this.timeId));
             var duration = Date.parse(data.newState.timestamp) - Date.parse(data.oldState.lastchange);
@@ -244,10 +248,10 @@ function observeLogging(data) {
         + " VdS:" + (parseFloat(getState(this.curTempId)) - parseFloat(getState(this.nomTempId))).toFixed(1);
 
     if (data && (data.oldState.value != null) && (data.oldState.value >= 0)) {
-        if ((data.newState.value == true) || (data.newState.value > 0)) {
+        if (boolTrue(data.newState.value)) {
             // Einschaltvorgang
             log("[observeLogging] " + this.name + "->ON " + tempStr);
-        } else if ((data.newState.value == false) || (data.newState.value == 0)) {
+        } else if (!boolTrue(data.newState.value)) {
             // Ausschaltvorgang
             log("[observeLogging] " + this.name + "->OFF" + tempStr);
         }
@@ -283,7 +287,8 @@ function observeTemp(data) {
         logOutput(4, "[observeTemp] cannot read temperature for circuit '" + this.name + "' on change of #" + data.id);
     } else if (this.relayId) {
         var rel = getState(this.relayId);
-        if (curTemp < minTemp) {
+        var override = boolTrue(this.overrideId ? getState(this.overrideId) : false);
+        if ((curTemp < minTemp) || (override && (curTemp < maxTemp)){
             if (this.delayOffTimeout) {
                 // avoid delayed turning off
                 clearTimeout(this.delayOffTimeout);
@@ -308,6 +313,9 @@ function observeTemp(data) {
             } else {
                 setState(this.relayId, false);
             }
+        }
+        if (override && (curTemp >= maxTemp)) {
+            setState(this.overrideId, false);
         }
     }
 }
@@ -440,7 +448,7 @@ function setNominalTemp() {
             }
 
             // einmalige Anforderung?
-            if (Circuits[circuit].overrideId ? getState(Circuits[circuit].overrideId) : false) {
+            if (boolTrue(Circuits[circuit].overrideId ? getState(Circuits[circuit].overrideId) : false)) {
                 if ((now - Date.parse(getTimestamp(Circuits[circuit].overrideId))) > 3600000) {
                     // Not-Aus nach 1 Stunde
                     setState(Circuits[circuit].overrideId, false);
