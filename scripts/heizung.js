@@ -200,7 +200,7 @@ function logOutput(level, str) {
 }
 
 function boolTrue(boolVal) {
-    return (boolVal === true || boolVal === "true" || boolVal === 1);
+    return (boolVal === true || boolVal === "true" || boolVal === 1 || boolVal === "1");
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -476,10 +476,10 @@ function setNominalTemp() {
     }
 
     // TODO: bei minütlicher Ausführung nicht mehr erforderlich!
-    if (now.getFullYear() < 2000) {
-        // Zeit nach Reboot noch nicht gestellt, alle 30 Sekunden prüfen
-        setTimeout(setNominalTemp, 30000);
-    }
+    //if (now.getFullYear() < 2000) {
+    //    // Zeit nach Reboot noch nicht gestellt, alle 30 Sekunden prüfen
+    //    setTimeout(setNominalTemp, 30000);
+    //}
 }
 
 
@@ -644,7 +644,8 @@ function initHeizung() {
 
     // einmalig Temperaturen setzen, fortan alle 5 Minuten
     setNominalTemp();
-    schedule("0/5 * * * *", setNominalTemp);
+    //schedule("0/5 * * * *", setNominalTemp);
+    schedule("* * * * *", setNominalTemp);
 
     // temporary!
     schedule( "3 9,20,21 * * *", observeLogging.bind( Circuits["_2"] ) );
