@@ -10,8 +10,6 @@
 //
 //
 // TODO:
-// - bei einmaligem Override: Betrieb solange aufrecht erhalten, bis einmal Abschalttemp. erreicht!
-//
 // - "dynamisches" Kessel-Soll nach Ist-Temperatur setzen? (evtl. nicht Hysterese, sondern min/max getrennt setzen?)
 // - Kessel-Notruf einführen, Verbraucher bei drohender Überhitzung einschalten!
 // - Verbraucher nach Brenner-Aus nachlaufen lassen
@@ -536,7 +534,7 @@ function initDatapoints(circuit) {
     logOutput(3, "[initDatapoints] created datapoint #" + circuit.nomTempId + " 'Heizung." + circuit.name + ".Soll'");
 
     // Ferienprogramm (Auswertung in setNominalTemp)
-    if (circuit.holidayTemp) {
+    if (circuit.holidayTemp != null) {
         circuit.holidayId = circuit.firstId + 8;
         setObject(circuit.holidayId, {
             Name: "Heizung." + circuit.name + ".FerienBis",
@@ -548,7 +546,7 @@ function initDatapoints(circuit) {
     }
 
     // Override/einmalige Anforderung (Auswertung in setNominalTemp)
-    if (circuit.overrideTemp) {
+    if (circuit.overrideTemp != null) {
         circuit.overrideId = circuit.firstId + 9;
         setObject(circuit.overrideId, {
             Name: "Heizung." + circuit.name + ".Anforderung",
