@@ -3,32 +3,37 @@
  *
  *  Compute aggregated values per day and store them in JSON
  *
- *  SG, 24.02.2015
+ *  SG, 24.02.2015 - initial version
+ *  SG, 23.02.2016 - completely reworked average computing, read date from timestamp instead of filename
  *
  */
+
+// include debug output and do not save changes
+var debugRun = 0;
 
 var ccuPath = "/opt/ccu.io";
 var fs =        require('fs');
 var settings = {};
 
+var tmpArr = {}; // aggregated values for 1 day
+var newFoundDays = [];
+var lastDay = null;
+
+
 // factor/mult only for XML export
 //   factor: multiply ALL values by this
 //   mult:   add second "mdiff"|"mavg"|... multiplied by this
 var defSettings = {
-    77001: {diff:1,                     name:"Brennerstarts"},
     77003: {min:1, diff:1, factor:100,  name:"Oelvorrat"},
-    77002: {diff:1, mult:2.05,          name:"Brennerlaufzeit"},
-    77004: {avg:1,                      name:"Kessel.Soll"},
-    77014: {avg:1,                      name:"Brauchwasser.Soll"},
-    77024: {max:1, min:1, avg:1,        name:"FB.Soll"},
-    77025: {avg:1,                      name:"FB.RaumSoll"},
-    77034: {max:1, min:1, avg:1,        name:"HK.Soll"},
-    77035: {avg:1,                      name:"HK.RaumSoll"},
-    77107: {time:1,                     name:"Brenner"},
-    77108: {time:1,                     name:"FB.Pumpe"},
-    77109: {time:1,                     name:"HK.Pumpe"},
-    74309: {max:1, min:1, avg:1,        name:"Wohnzimmer"},
-    74310: {max:1, min:1, avg:1,        name:"Aussentemperatur"},
+    77107: {avg:1, mult:0.3545,         name:"Brennermodulation"},
+    77135: {max:1, min:1, avg:1,        name:"Wohnzimmer"},
+    77103: {max:1, min:1, avg:1,        name:"Aussentemperatur"},
+    74311: {diff:1, factor:0.0005,      name:"Stromverbrauch"},
+    77126: {diff:1,                     name:"Solarertrag"},
+    77108: {max:1, min:1,               name:"Wasserdruck"},
+    77109: {diff:1,                     name:"Zuendfehler 1"},
+    77110: {diff:1,                     name:"Zuendfehler 2"},
+    77148: {diff:1,                     name:"Zuendausfall"},
     esyoil: {zip:31079, amount:[77003, "min", 4000]} // amount = [datapoint, set, max_content] --> max - dp[set]
 };
 
@@ -78,6 +83,8 @@ function getPrice(zip, amount, year, month, day, callback) {
 
 
 function readAggFile(callback) {
+// SG, 23.02.2016 - add ability to debug
+    if (debugRun == 1) { settings = defSettings; } else
     try {
         var storedValues = fs.readFileSync(ccuPath+"/datastore/average-variables.json");
         settings = JSON.parse(storedValues.toString());
@@ -150,11 +157,20 @@ function makeCSV() {
         }
         csvArr.push(csvLine);
     }
+    // TODO: is order always retained?
+    //csvArr.sort();
 
     return csvArr.join("\n") + "\n";
 }
 
 function writeAggFile(callback) {
+// SG, 23.02.2016 - add ability to debug run
+    if (debugRun == 1) {
+        console.log("--\n" + JSON.stringify(settings, null, "  ") + "--\n" + makeCSV());
+        return;
+    }
+    // skip last day, because it's neither finished nor calculated yet
+    if (lastDay != null) delete settings.values[lastDay];
     var str = JSON.stringify(settings);
 
     // add some newline and spaces
@@ -180,95 +196,141 @@ function writeAggFile(callback) {
 }
 
 
-function processLogFile(date, data) {
-    var dataArr = data.split("\n");
-    var l = dataArr.length;
+function date2String(timestamp) {
+    return timestamp.getFullYear() + '-' +
+        ("0" + (timestamp.getMonth() + 1).toString(10)).slice(-2) + '-' +
+        ("0" + (timestamp.getDate()).toString(10)).slice(-2);
+}
 
-    if (l < 1) return;
-//    var triple = dataArr[0].split(" ", 3);
-//    var timestamp = new Date(triple[0] * 1000);
-//    var date = timestamp.getFullYear() + '-' +
-//        ("0" + (timestamp.getMonth() + 1).toString(10)).slice(-2) + '-' +
-//        ("0" + (timestamp.getDate()).toString(10)).slice(-2);
-
-    // already processed this file
-    if (settings.values[date]) return;
-    
-    var tmpArr = {}; // aggregated values
-    var lastTS;
-    for (var i = 0; i < l; i++) {
-        var triple = dataArr[i].split(" ", 3);
-        var floatVal = parseFloat(triple[2]);
-        if (settings[triple[1]]) {
-            if (!tmpArr[triple[1]]) {
-                tmpArr[triple[1]] = {};
-                // assume sorted values inside file, so this is the first
-                tmpArr[triple[1]].firstTS = triple[0];
-                tmpArr[triple[1]].ts      = triple[0];
-                tmpArr[triple[1]].value   = triple[2];
-            } else if (tmpArr[triple[1]].value != triple[2]) {
-                var timeDiff = (parseInt(triple[0]) - parseInt(tmpArr[triple[1]].ts)) / 3600;
-
-                if (settings[triple[1]].min || settings[triple[1]].diff) {
-                    if (!tmpArr[triple[1]].min || (tmpArr[triple[1]].min > floatVal))
-                        tmpArr[triple[1]].min = floatVal;
-                }
-                if (settings[triple[1]].max || settings[triple[1]].diff) {
-                    if (!tmpArr[triple[1]].max || (tmpArr[triple[1]].max < floatVal))
-                        tmpArr[triple[1]].max = floatVal;
-                }
-
-                if (settings[triple[1]].avg) {
-                    tmpArr[triple[1]].avgSum  = (tmpArr[triple[1]].avgSum || 0) + floatVal * timeDiff;
-                    tmpArr[triple[1]].avgTime = (tmpArr[triple[1]].avgTime || 0) + timeDiff;
-                }
-                if (settings[triple[1]].time) {
-                    // Ausschaltvorgang, also Zeit (in h) addieren
-                    if ((tmpArr[triple[1]].value >= 0) || (tmpArr[triple[1]].value == "true"))
-                        if ((triple[2] == 0) || (triple[2] == "false"))
-                            tmpArr[triple[1]].time = (tmpArr[triple[1]].time || 0) + timeDiff;
-                }
-
-                tmpArr[triple[1]].ts      = triple[0];
-                tmpArr[triple[1]].value   = triple[2];
-            }
-
-            // assume sorted values inside file, so this is the last
-            tmpArr[triple[1]].lastTS = triple[0];
-            lastTS = triple[0];
+function initTmpArr(dp, timestamp, value, floatVal) {
+    tmpArr[dp] = {};
+    tmpArr[dp].ts        = timestamp;
+    tmpArr[dp].lastValue = value;
+    if (floatVal) {
+        tmpArr[dp].lastFloat = floatVal;
+    } else {
+        if (String(value).match(/\"?(true|on|yes)\"?/)) {
+            tmpArr[dp].lastFloat = 1;
+        } else {
+            floatVal = parseFloat(value);
+            tmpArr[dp].lastFloat = isNaN(floatVal) ? 0 : floatVal;
         }
     }
+    // assure valid min/max
+    tmpArr[dp].min = tmpArr[dp].lastFloat;
+    tmpArr[dp].max = tmpArr[dp].lastFloat;
+}
 
-    // now compute average, diff and store in settings.values
-    for (dp in tmpArr) if (settings[dp]) {
-        if (!settings.values[date]) settings.values[date] = {};
-        settings.values[date][dp] = {};
+function updateTmpArr(dp, timestamp, value) {
+    var timeDiff = (parseInt(timestamp) - parseInt(tmpArr[dp].ts)) / 86400;
 
-        var timeDiff = (parseInt(lastTS) - parseInt(tmpArr[dp].ts)) / 3600;
-        if (!tmpArr[dp].avgTime) {
-            tmpArr[dp].avgSum  = parseFloat(tmpArr[dp].value);
-            tmpArr[dp].avgTime = 1;
-        } else {
-            // add last value until end of date
-            tmpArr[dp].avgSum  = tmpArr[dp].avgSum + parseFloat(tmpArr[dp].value) * timeDiff;
-            tmpArr[dp].avgTime = tmpArr[dp].avgTime + timeDiff;
+    tmpArr[dp].ts        = timestamp;
+    tmpArr[dp].lastValue = value;
+
+    // add time if it was "on" until now
+    if (tmpArr[dp].lastFloat > 0)
+        tmpArr[dp].time = (tmpArr[dp].time || 0) + timeDiff;
+
+    tmpArr[dp].avg  = (tmpArr[dp].avg || 0) + (tmpArr[dp].lastFloat * timeDiff);
+
+    // compute new valid floatVal
+    if (String(value).match(/\"?(true|on|yes)\"?/)) {
+        tmpArr[dp].lastFloat = 1;
+    } else {
+        floatVal = parseFloat(value);
+        if (!isNaN(floatVal)) tmpArr[dp].lastFloat = floatVal;
+    }
+
+    if (tmpArr[dp].min > tmpArr[dp].lastFloat) tmpArr[dp].min = tmpArr[dp].lastFloat;
+    if (tmpArr[dp].max < tmpArr[dp].lastFloat) tmpArr[dp].max = tmpArr[dp].lastFloat;
+
+//if ((debugRun == 1) && settings[triple[1]].avg) console.log(lastValue.toFixed(1) + " for " + (timeDiff*1440).toFixed(2) + " min = " + (lastValue * timeDiff).toFixed(3) + "  ==>  " + tmpArr[triple[1]].avg.toFixed(3) + " @" + (new Date(triple[0] * 1000)));
+
+}
+
+function processLogFile(data) {
+    var dataArr = data.split("\n");
+    while (dataArr[0] == "") dataArr.shift();
+    var l = dataArr.length;
+
+    while ((l > 0) && (dataArr[l-1] == "")) l--;
+    if (l < 1) return;
+
+    // skip whole file if day of first and last line already processed
+    if (settings.values[date2String(new Date(dataArr[0].split(" ", 3)[0] * 1000))] &&
+        settings.values[date2String(new Date(dataArr[l-1].split(" ", 3)[0] * 1000))]) return;
+
+    for (var i = 0; i < l; i++) {
+        var triple = dataArr[i].split(" ", 3);
+        if ((dataArr[i] == "") || isNaN(parseInt(triple[0]))) continue;
+
+        // extract day from timestamp
+        var timestamp = new Date(triple[0] * 1000);
+        var date = date2String(timestamp);
+
+        // skip invalid dates
+        if ((timestamp.getFullYear() < 2000) || (timestamp > new Date())) {
+            continue;
         }
-        // still on? add time...
-        if ((tmpArr[dp].value >= 0) || (tmpArr[dp].value == "true"))
-            tmpArr[dp].time = (tmpArr[dp].time || 0) + timeDiff;
-        tmpArr[dp].diff = tmpArr[dp].max - tmpArr[dp].min;
-        tmpArr[dp].avg  = tmpArr[dp].avgSum / tmpArr[dp].avgTime;
+        if (lastDay == null) lastDay = date;
 
-        for (var set in settings[dp]) if ((set != "name") && (set != "factor") && (set != "mult"))
-            settings.values[date][dp][set] = tmpArr[dp][set];
+        // skip if day already processed
+        if (settings.values[date]) {
+            lastDay = date;
+            continue;
+        }
+
+        // start a new day: now compute average, diff and store in settings.values
+        if (lastDay != date) {
+            var ts = (new Date(timestamp.getFullYear(), timestamp.getMonth(), timestamp.getDate())).getTime() / 1000;
+            if (!settings.values[lastDay]) settings.values[lastDay] = {};
+
+            for (dp in tmpArr) if (settings[dp] && !settings.values[lastDay][dp]) {
+                // avoid init, if lastDay was set by skipping a date
+                settings.values[lastDay][dp] = {};
+
+                // one last update for avg and time
+                updateTmpArr(dp, ts, tmpArr[dp].lastValue);
+                tmpArr[dp].diff = tmpArr[dp].max - tmpArr[dp].min;
+
+                for (var set in settings[dp]) if ((set != "name") && (set != "factor") && (set != "mult"))
+                    settings.values[lastDay][dp][set] = tmpArr[dp][set] || 0;
+
+                settings.values[lastDay][dp].val = tmpArr[dp].lastValue;
+                settings.values[lastDay][dp].flt = tmpArr[dp].lastFloat;
+            }
+
+            // store values of last day in tmpArr, even when processed earlier
+            for (dp in settings.values[lastDay]) if (settings[dp])
+                initTmpArr(dp, ts, settings.values[lastDay][dp].val, settings.values[lastDay][dp].flt);
+
+            // add this day for readEsyoil
+            if (newFoundDays.indexOf(lastDay) < 0) newFoundDays.push(lastDay);
+
+            lastDay = date;
+        }
+        
+        // store current value in tmpArr
+        if (settings[triple[1]]) {
+            if (!tmpArr[triple[1]]) {
+                // assume sorted values inside file, so this is the first
+                initTmpArr(triple[1], triple[0], triple[2]);
+            } else if (tmpArr[triple[1]].lastValue != triple[2]) {
+                updateTmpArr(triple[1], triple[0], triple[2]);
+            }
+        }
     }
 }
 
-function readEsyoil(date, callback) {
-    // already processed this day?
-    if (!settings.esyoil || !settings.values[date] || settings.values[date].esyoil) {
+function readEsyoil(callback) {
+    if (newFoundDays.length < 1) {
         if (callback) callback();
-    } else {
+        return;
+    }
+
+    var date = newFoundDays.pop();
+    // already processed this day?
+    if (settings.esyoil && settings.values[date] && !settings.values[date].esyoil) {
         var year = date.substr(0,4), month = date.substr(5,2), day = date.substr(8,2), amount;
 
         // calc amount
@@ -292,8 +354,11 @@ function readEsyoil(date, callback) {
                 sum:    (cost*amount/100).toFixed(2),
                 date:   esyDate
             };
-            if (callback) callback();
+            // next day
+            readEsyoil(callback);
         });
+    } else {
+        readEsyoil(callback);
     }
 }
 
@@ -305,9 +370,9 @@ function processLogFiles(folder, files, callback) {
                 console.log(JSON.stringify(err));
             } else {
                 console.log(this.fold + this.file + "...");
-                processLogFile(this.file.substring(22), data.toString());
+                processLogFile(data.toString());
             }
-            readEsyoil(this.file.substring(22), function() {
+            readEsyoil(function() {
                 processLogFiles(this.fold, this.remain, this.call);
             }.bind(this));
         }.bind({ file: path, remain: files, fold: folder, call: callback }));
@@ -326,9 +391,13 @@ function main() {
             console.log("Unable to read dir: "+folder);
         } else {
             for (var i = 0; i < data.length; i++)
-                if (data[i].match(/devices\-variables\.log\./))
+                if (data[i].match(/devices\-variables\.log\.201(5\-1[1|2]|6\-)/))
+//                if (data[i].match(/devices\-variables\.log\.2016\-02\-2/))
+//                if (data[i].match(/devices\-variables\.log\./))
                     files.push(data[i]);
             files.sort();
+            files.push("devices-variables.log");
+
             // first read old aggregated data, then add found files
             if (files.length > 0) readAggFile( function() {
                 processLogFiles(folder, files, writeAggFile);
@@ -341,7 +410,8 @@ function main() {
 
 // simply skip this step in standalone mode
 if (typeof schedule === 'function') {
-    // Taeglich um 2 Uhr ausfuehren
+    debugRun = 0;
+    // run daily at 2:00 am
     schedule("0 2 * * *", main);
 }
 
