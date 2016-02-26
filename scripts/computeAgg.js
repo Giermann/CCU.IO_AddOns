@@ -5,6 +5,7 @@
  *
  *  SG, 24.02.2015 - initial version
  *  SG, 23.02.2016 - completely reworked average computing, read date from timestamp instead of filename
+ *  SG, xx.xx.2016 - add ability to write back calculated values
  *
  */
 
@@ -20,12 +21,23 @@ var newFoundDays = [];
 var lastDay = null;
 
 
-// factor/mult only for XML export
-//   factor: multiply ALL values by this
-//   mult:   add second "mdiff"|"mavg"|... multiplied by this
+// define datapoints here, special handling for 'esyoil'
+//   nn: {
+//         name: "...", // column header in CSV file
+//         min: 1,      // store minimum value of each day
+//         max: 1,      // store maximum value
+//         avg: 1,      // calculate (timed) average
+//         diff: 1,     // calculate difference (max - min)
+//         time: 1,     // count time for value > 0
+//                      // post-processing:
+//         factor: xx,  // multiply all values before exporting to CSV
+//         mult: xx,    // add another m[min|max|avg|diff|time] multiplied with xx
+//                      // write calculated values back to CCU.IO
+//         report ...(tbc)
+//       }
 var defSettings = {
     77003: {min:1, diff:1, factor:100,  name:"Oelvorrat"},
-    77107: {avg:1, mult:0.3545,         name:"Brennermodulation"},
+    77107: {avg:1, time:1, mult:0.345,  name:"Brennermodulation"},
     77135: {max:1, min:1, avg:1,        name:"Wohnzimmer"},
     77103: {max:1, min:1, avg:1,        name:"Aussentemperatur"},
     74311: {diff:1, factor:0.0005,      name:"Stromverbrauch"},
@@ -39,6 +51,15 @@ var defSettings = {
 
 var http =      require('http'),
     https =     require('https');
+
+
+function logOutput(str) {
+    if (typeof log === 'function') {
+        log(str);
+    } else {
+        console.log(str);
+    }
+}
 
 function getURL(url, callback) {
     if (!url) return;
@@ -89,7 +110,7 @@ function readAggFile(callback) {
         var storedValues = fs.readFileSync(ccuPath+"/datastore/average-variables.json");
         settings = JSON.parse(storedValues.toString());
     } catch (e) {
-        console.log("ERROR reading stored values.\n"+JSON.stringify(e));
+        logOutput("ERROR reading stored values: "+JSON.stringify(e));
         settings = defSettings;
     }
     if (!settings.values) settings.values = {};
@@ -184,13 +205,13 @@ function writeAggFile(callback) {
         console.log("Writing settings back to "+ccuPath+"/datastore/average-variables.json");
         fs.writeFileSync(ccuPath+"/datastore/average-variables.json", str);
     } catch (e) {
-        console.log("ERROR writing stored values!\n"+JSON.stringify(e));
+        logOutput("ERROR writing stored values: "+JSON.stringify(e));
     }
     try {
-        console.log("Writing settings back to "+ccuPath+"/www/average.csv");
+        console.log("Writing CSV values to "+ccuPath+"/www/average.csv");
         fs.writeFileSync(ccuPath+"/www/average.csv", makeCSV());
     } catch (e) {
-        console.log("ERROR writing CSV values!\n"+JSON.stringify(e));
+        logOutput("ERROR writing CSV values: "+JSON.stringify(e));
     }
     if (callback) callback();
 }
@@ -209,11 +230,13 @@ function initTmpArr(dp, timestamp, value, floatVal) {
     if (floatVal) {
         tmpArr[dp].lastFloat = floatVal;
     } else {
-        if (String(value).match(/\"?(true|on|yes)\"?/)) {
+        floatVal = parseFloat(value);
+        if (!isNaN(floatVal)) {
+            tmpArr[dp].lastFloat = floatVal;
+        } else if (String(value).match(/\"?(true|on|yes)\"?/)) {
             tmpArr[dp].lastFloat = 1;
         } else {
-            floatVal = parseFloat(value);
-            tmpArr[dp].lastFloat = isNaN(floatVal) ? 0 : floatVal;
+            tmpArr[dp].lastFloat = 0;
         }
     }
     // assure valid min/max
@@ -234,17 +257,19 @@ function updateTmpArr(dp, timestamp, value) {
     tmpArr[dp].avg  = (tmpArr[dp].avg || 0) + (tmpArr[dp].lastFloat * timeDiff);
 
     // compute new valid floatVal
-    if (String(value).match(/\"?(true|on|yes)\"?/)) {
+    var floatVal = parseFloat(value);
+    if (!isNaN(floatVal)) {
+        tmpArr[dp].lastFloat = floatVal;
+    } else if (String(value).match(/\"?(true|on|yes)\"?/)) {
         tmpArr[dp].lastFloat = 1;
-    } else {
-        floatVal = parseFloat(value);
-        if (!isNaN(floatVal)) tmpArr[dp].lastFloat = floatVal;
+    } else if (String(value).match(/\"?(false|off|no)\"?/)) {
+        tmpArr[dp].lastFloat = 0;
     }
 
     if (tmpArr[dp].min > tmpArr[dp].lastFloat) tmpArr[dp].min = tmpArr[dp].lastFloat;
     if (tmpArr[dp].max < tmpArr[dp].lastFloat) tmpArr[dp].max = tmpArr[dp].lastFloat;
 
-//if ((debugRun == 1) && settings[triple[1]].avg) console.log(lastValue.toFixed(1) + " for " + (timeDiff*1440).toFixed(2) + " min = " + (lastValue * timeDiff).toFixed(3) + "  ==>  " + tmpArr[triple[1]].avg.toFixed(3) + " @" + (new Date(triple[0] * 1000)));
+//    if ((debugRun == 1) && settings[dp].avg) console.log(dp + ": " + tmpArr[dp].lastFloat.toFixed(1) + " for " + (timeDiff*1440).toFixed(2) + " min = " + (tmpArr[dp].lastFloat * timeDiff).toFixed(3) + "  ==>  " + tmpArr[dp].avg.toFixed(3) + " @" + (new Date(timestamp*1000)));
 
 }
 
@@ -367,7 +392,7 @@ function processLogFiles(folder, files, callback) {
     if (path) {
         fs.readFile(folder + path, function (err, data) {
             if (err) {
-                console.log(JSON.stringify(err));
+                logOutput(JSON.stringify(err));
             } else {
                 console.log(this.fold + this.file + "...");
                 processLogFile(data.toString());
@@ -388,12 +413,12 @@ function main() {
     // cycle through log folder
     fs.readdir(folder, function (err, data) {
         if (err) {
-            console.log("Unable to read dir: "+folder);
+            logOutput("Unable to read dir '"+folder+"': "+JSON.stringify(err));
         } else {
             for (var i = 0; i < data.length; i++)
-                if (data[i].match(/devices\-variables\.log\.201(5\-1[1|2]|6\-)/))
-//                if (data[i].match(/devices\-variables\.log\.2016\-02\-2/))
-//                if (data[i].match(/devices\-variables\.log\./))
+                if (data[i].match(/devices\-variables\.log\.2016\-02\-2[2-9]/) || ((debugRun != 1) &&
+                    data[i].match(/devices\-variables\.log\.201(5\-1[1|2]|6\-)/)))
+//                    data[i].match(/devices\-variables\.log\./)))
                     files.push(data[i]);
             files.sort();
             files.push("devices-variables.log");
