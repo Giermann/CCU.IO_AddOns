@@ -46,7 +46,7 @@ function setShutterPos(dpRead, dpWrite, pos, retries) {
 function setDualPos(dpRead1, dpWrite1, dpRead2, dpWrite2, dpWriteDual, pos) {
     if (getState(dpRead1) == pos) {
         setShutterPos(dpRead2, dpWrite2, pos);
-    } else if (getState(dpRead2 == pos) {
+    } else if (getState(dpRead2) == pos) {
         setShutterPos(dpRead1, dpWrite1, pos);
     } else {
         setShutterPos(dpRead1, dpWriteDual, pos);
